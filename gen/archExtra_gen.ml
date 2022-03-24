@@ -168,10 +168,18 @@ with type arch_reg = I.arch_reg and type special = I.special
     String.concat ", "
        (List.map (fun (loc,v) -> pp_location loc ^ "->" ^ ppo v) env)
 
+  let tr_initv =
+    let open Code in
+    function
+    | V i -> S (string_of_int i)
+    | VPte (true,loc) -> P (AArch64PteVal.default loc)
+    | VPte (false,loc) -> P (AArch64PteVal.invalid loc)
+
   let complete_init iv i =
     let i =
       List.fold_left
-        (fun env (loc,v) -> (Loc loc,Some (S (string_of_int v)))::env) i iv in
+        (fun env (loc,v) ->
+          (Loc loc,Some (tr_initv v))::env) i iv in
     let already_here =
       List.fold_left
         (fun k (loc,v) ->
