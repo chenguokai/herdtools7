@@ -1074,17 +1074,18 @@ module Make
              do_write_mem sz AArch64.N aexp Access.VIR a v ii)
           end >>= B.next2T
         else
+          let (>>>) = M.data_input_next in
           fun sz rs1 rs2 rd kr ii ->
           do_str
-            (fun ac a v ii ->
-              (M.op1 Op.Fst v >>=
-                 fun  v -> do_write_mem sz AArch64.N aexp ac a v ii) >>|
-                ((add_size a sz >>| M.op1 Op.Snd v) >>=
-                   fun (a,v) -> do_write_mem sz AArch64.N aexp ac a v ii))
+            (fun ac a _ ii ->
+              (read_reg_data sz rs1 ii >>> fun v ->
+               do_write_mem sz AArch64.N aexp ac a v ii) >>|
+              (add_size a sz >>= fun a ->
+               read_reg_data sz rs2 ii >>> fun v ->
+               do_write_mem sz AArch64.N aexp ac a v ii))
             sz AArch64.N
             (get_ea_noext rd kr ii)
-            ((read_reg_data sz rs1 ii >>| read_reg_data sz rs2 ii) >>=
-               fun (v1,v2) -> M.unitT (V.Pair (v1,v2)))
+            (M.unitT V.zero)
             ii
 
       and stlr sz rs rd ii =
@@ -1124,16 +1125,20 @@ module Make
           sz t rr rd ii
 
       let stxp sz t rr rs1 rs2 rd ii =
+        let (>>>) = M.data_input_next in
         do_stxr
-          ((read_reg_data sz rs1 ii >>| read_reg_data sz rs2 ii) >>= fun (v1,v2) ->
-           M.unitT (V.Pair (v1,v2)))
-        (fun an ac ea resa v ->
-          begin
-            (M.op1 Op.Fst v >>= fun v ->  write_mem_atomic sz an aexp ac ea v resa ii) >>||
-              ((add_size ea sz >>| M.op1 Op.Snd v) >>= fun (a,v) ->
-               check_morello_for_write
-                 (fun a -> check_mixed_write_mem sz an aexp ac a v ii) a v ii)
-          end >>!  ())
+          (M.unitT (V.zero))
+          (fun an ac ea resa _ ->
+            begin
+              (read_reg_data sz rs1 ii >>> fun v ->
+               write_mem_atomic sz an aexp ac ea v resa ii)
+              >>||
+                (add_size ea sz >>= fun a ->
+                 read_reg_data sz rs2 ii >>> fun v ->
+                 check_morello_for_write
+                   (fun a ->
+                     check_mixed_write_mem sz an aexp ac a v ii) a v ii)
+            end >>!  ())
         sz t rr rd ii
 
 (* AMO instructions *)
